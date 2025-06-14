@@ -3,7 +3,10 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <exception>
 using namespace std;
+
+const string FILENAME = "transactions.csv";
 
 enum TransactionType {
 	Income, Expense
@@ -19,6 +22,20 @@ enum TransactionCategory {
 	Entertainment,
 	Communication,
 	Other
+};
+
+// file error exception.
+class FileException: public exception {
+	string message;
+
+public:
+	FileException(const string &message) :
+			message(message) {
+	}
+
+	const char* what() const noexcept {
+		return message.c_str();
+	}
 };
 
 //represents a transaction.
@@ -309,7 +326,10 @@ void TransactionList::loadFile(const string &filename) {
 		cout << "loaded " << size << " transactions from " << filename << "."
 				<< endl;
 	} else {
-		cout << "Failed to open file " << filename << "." << endl;
+		ostringstream oss;
+		oss << "Failed to open file " << filename << ".";
+
+		throw FileException(oss.str());
 	}
 }
 
@@ -331,7 +351,10 @@ void TransactionList::saveFile(const string &filename) const {
 		cout << "saved " << size << " transactions to " << filename << "."
 				<< endl;
 	} else {
-		cout << "Failed to create file " << filename << "." << endl;
+
+		ostringstream oss;
+		oss << "Failed to create file " << filename << ".";
+		throw FileException(oss.str());
 	}
 }
 
@@ -445,7 +468,11 @@ App::App() {
 }
 
 void App::showMenu() {
-	transList.loadFile("data.txt");
+	try {
+		transList.loadFile(FILENAME);
+	} catch (const exception &e) {
+		cout << "Exception: " << e.what() << endl;
+	}
 
 	//Repeatedly show the menu until the user exits
 	bool quit = false;
@@ -483,7 +510,11 @@ void App::showMenu() {
 		}
 	}
 
-	transList.saveFile("data.txt");
+	try {
+		transList.saveFile(FILENAME);
+	} catch (const exception &e) {
+		cout << "Exception: " << e.what() << endl;
+	}
 }
 
 //prompt user to create a transaction.
