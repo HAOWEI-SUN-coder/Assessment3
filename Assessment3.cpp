@@ -81,6 +81,64 @@ public:
 //The maximum number of transactions
 const int MAX_SIZE = 100;
 
+template<class DataType>
+class LinkedList {
+protected:
+	struct Node {
+		DataType data;
+		std::shared_ptr<Node> next;
+		std::shared_ptr<Node> prev;
+	};
+protected:
+	std::shared_ptr<Node> head;
+	std::shared_ptr<Node> tail;
+	int count;
+protected:
+	std::shared_ptr<Node> createNode(const DataType &data) {
+		std::shared_ptr<Node> node = std::shared_ptr<Node>();
+		node->data = data;
+		node->head = nullptr;
+		node->tail = nullptr;
+		return node;
+	}
+public:
+
+	LinkedList() :
+			head(nullptr), tail(nullptr), count(0) {
+
+	}
+
+	void addToHead(const DataType &data) {
+		if (count == 0) {
+			head = tail = createNode(data);
+		} else {
+			std::shared_ptr<Node> node = createNode(data);
+			node->next = head;
+			head->prev = node;
+			head = node;
+		}
+
+		count++;
+	}
+
+	void addToTail(const DataType &data) {
+		if (count == 0) {
+			head = tail = createNode(data);
+		} else {
+			std::shared_ptr<Node> node = createNode(data);
+			node->prev = tail;
+			tail->next = node;
+			tail = node;
+		}
+
+		count++;
+	}
+
+	int size() {
+		return count;
+	}
+};
+
 //manage transactions
 class TransactionList {
 private:
@@ -167,8 +225,52 @@ public:
 	const string& getUsername() const;
 };
 
-class UserList {
+class UserList: public LinkedList<User> {
 
+public:
+	UserList() {
+
+	}
+
+	const User* getUser(const string &username) {
+		std::shared_ptr<Node> node = head;
+		while (head) {
+			if (head->data.getUsername() == username) {
+				return &head->data;
+			}
+			head = head->next;
+		}
+		return nullptr;
+	}
+
+	void readFile(const string &filename) {
+		ifstream ifs(filename, ios::binary);
+		if (!ifs) {
+			throw FileException("No users found.");
+		}
+
+		while (ifs.peek() != EOF) {
+			User u;
+			u.readFromFile(ifs);
+			addToTail(u);
+		}
+		ifs.close();
+	}
+
+	void saveFile(const string &filename) {
+		ofstream ofs(filename, ios::binary);
+		if (!ofs) {
+			throw FileException("Failed to open file for writing.");
+			return;
+		}
+
+		std::shared_ptr<Node> node = head;
+		while (head) {
+			head->data.writeToFile(ofs);
+			head = head->next;
+		}
+		ofs.close();
+	}
 };
 
 //show menu and handle user commands.
