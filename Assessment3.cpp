@@ -5,6 +5,9 @@
 #include <iomanip>
 #include <exception>
 #include <memory>
+
+#include <openssl/sha.h>
+
 using namespace std;
 
 const string FILENAME = "transactions.csv";
@@ -97,8 +100,8 @@ protected:
 	std::shared_ptr<Node> createNode(const DataType &data) {
 		std::shared_ptr<Node> node = std::shared_ptr<Node>();
 		node->data = data;
-		node->head = nullptr;
-		node->tail = nullptr;
+		node->next = nullptr;
+		node->prev = nullptr;
 		return node;
 	}
 public:
@@ -186,6 +189,8 @@ class User {
 	string passwordEncrypted;
 	bool admin;
 public:
+	User();
+
 	User(const string &username, const string &password, bool admin = false);
 
 	void writeToFile(ofstream &ofs) const {
@@ -207,17 +212,14 @@ public:
 		ifs.read(&passwordEncrypted[0], plen);
 	}
 
-	static string encrypt(const string &password) {
-		string encrypted = password;
-		char key = 'K'; // Simple XOR key
-		for (char &c : encrypted) {
-			c ^= key;
+	static string hash(const string &password) {
+		unsigned char hash[SHA256_DIGEST_LENGTH];
+		SHA256((unsigned char*)password.c_str(), 14, hash);
+		std::stringstream ss;
+		for (unsigned char i : hash) {
+			ss << std::hex << std::setw(2) << std::setfill('0') << (int) i;
 		}
-		return encrypted;
-	}
-
-	static string decrypt(const string &encrypted) {
-		return encrypt(encrypted); // XOR encryption is symmetric
+		return ss.str();
 	}
 
 	bool isAdmin() const;
@@ -323,6 +325,8 @@ public:
 };
 
 int main() {
+	cout << User::hash("abc");
+
 	App app;
 	app.runMenu();
 }
@@ -946,8 +950,13 @@ bool App::validateAmount(const string &input) const {
 	}
 }
 
+User::User() :
+		admin(false) {
+
+}
+
 User::User(const string &username, const string &password, bool admin) :
-		username(username), passwordEncrypted(encrypt(password)), admin(admin) {
+		username(username), passwordEncrypted(hash(password)), admin(admin) {
 
 }
 
