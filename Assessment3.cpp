@@ -4,6 +4,7 @@
 #include <sstream>
 #include <iomanip>
 #include <exception>
+#include <memory>
 using namespace std;
 
 const string FILENAME = "transactions.csv";
@@ -121,6 +122,55 @@ public:
 	void sortTransactions();
 };
 
+//represents a user.
+class User {
+	string username;
+	string passwordEncrypted;
+	bool admin;
+public:
+	User(const string &username, const string &password, bool admin = false);
+
+	void writeToFile(ofstream &ofs) const {
+		size_t ulen = username.size();
+		size_t plen = passwordEncrypted.size();
+		ofs.write(reinterpret_cast<const char*>(&ulen), sizeof(ulen));
+		ofs.write(username.c_str(), ulen);
+		ofs.write(reinterpret_cast<const char*>(&plen), sizeof(plen));
+		ofs.write(passwordEncrypted.c_str(), plen);
+	}
+
+	void readFromFile(ifstream &ifs) {
+		size_t ulen, plen;
+		ifs.read(reinterpret_cast<char*>(&ulen), sizeof(ulen));
+		username.resize(ulen);
+		ifs.read(&username[0], ulen);
+		ifs.read(reinterpret_cast<char*>(&plen), sizeof(plen));
+		passwordEncrypted.resize(plen);
+		ifs.read(&passwordEncrypted[0], plen);
+	}
+
+	static string encrypt(const string &password) {
+		string encrypted = password;
+		char key = 'K'; // Simple XOR key
+		for (char &c : encrypted) {
+			c ^= key;
+		}
+		return encrypted;
+	}
+
+	static string decrypt(const string &encrypted) {
+		return encrypt(encrypted); // XOR encryption is symmetric
+	}
+
+	bool isAdmin() const;
+	const string& getPassword() const;
+	const string& getUsername() const;
+};
+
+class UserList {
+
+};
+
 //show menu and handle user commands.
 class App {
 private:
@@ -131,7 +181,13 @@ public:
 	App();
 
 	//show system menu.
-	void showMenu();
+	void runMenu();
+
+	//show normal user menu.
+	void runUserMenu();
+
+	//show normal user menu.
+	void runAdminMenu();
 
 	//prompt user to create a transaction.
 	Transaction createTransaction();
@@ -166,7 +222,7 @@ public:
 
 int main() {
 	App app;
-	app.showMenu();
+	app.runMenu();
 }
 
 Transaction::Transaction() :
@@ -467,7 +523,106 @@ App::App() {
 
 }
 
-void App::showMenu() {
+void App::runMenu() {
+	try {
+		transList.loadFile(FILENAME);
+	} catch (const exception &e) {
+		cout << "Exception: " << e.what() << endl;
+	}
+
+	//Repeatedly show the menu until the user exits
+	bool quit = false;
+	while (!quit) {
+		//show the menu
+		cout << endl;
+		cout << "1. add transaction" << endl;
+		cout << "2. modify transaction" << endl;
+		cout << "3. delete transaction" << endl;
+		cout << "4. search transactions" << endl;
+		cout << "5. sort transactions" << endl;
+		cout << "6. display transactions" << endl;
+		cout << "0. exit" << endl;
+
+		//Accept user input
+		string option;
+		getline(cin, option);
+
+		//Implement command handling via functions
+		if (option == "1") {
+			addTransaction();
+		} else if (option == "2") {
+			modifyTransaction();
+		} else if (option == "3") {
+			deleteTransaction();
+		} else if (option == "4") {
+			searchTransaction();
+		} else if (option == "5") {
+			sortTransactions();
+		} else if (option == "6") {
+			displayTransactions();
+		} else if (option == "0") {
+			//user exits
+			quit = true;
+		}
+	}
+
+	try {
+		transList.saveFile(FILENAME);
+	} catch (const exception &e) {
+		cout << "Exception: " << e.what() << endl;
+	}
+}
+
+//show normal user menu.
+void App::runUserMenu() {
+	try {
+		transList.loadFile(FILENAME);
+	} catch (const exception &e) {
+		cout << "Exception: " << e.what() << endl;
+	}
+
+	//Repeatedly show the menu until the user exits
+	bool quit = false;
+	while (!quit) {
+		//show the menu
+		cout << endl;
+		cout << "1. add transaction" << endl;
+		cout << "2. modify transaction" << endl;
+		cout << "3. delete transaction" << endl;
+		cout << "4. sort transactions" << endl;
+		cout << "5. display transactions" << endl;
+		cout << "0. exit" << endl;
+
+		//Accept user input
+		string option;
+		getline(cin, option);
+
+		//Implement command handling via functions
+		if (option == "1") {
+			addTransaction();
+		} else if (option == "2") {
+			modifyTransaction();
+		} else if (option == "3") {
+			deleteTransaction();
+		} else if (option == "4") {
+			sortTransactions();
+		} else if (option == "5") {
+			displayTransactions();
+		} else if (option == "0") {
+			//user exits
+			quit = true;
+		}
+	}
+
+	try {
+		transList.saveFile(FILENAME);
+	} catch (const exception &e) {
+		cout << "Exception: " << e.what() << endl;
+	}
+}
+
+//show normal user menu.
+void App::runAdminMenu() {
 	try {
 		transList.loadFile(FILENAME);
 	} catch (const exception &e) {
@@ -687,4 +842,21 @@ bool App::validateAmount(const string &input) const {
 	} catch (const std::out_of_range &e) {
 		return false; // Out of range for double
 	}
+}
+
+User::User(const string &username, const string &password, bool admin) :
+		username(username), passwordEncrypted(encrypt(password)), admin(admin) {
+
+}
+
+bool User::isAdmin() const {
+	return admin;
+}
+
+const string& User::getPassword() const {
+	return passwordEncrypted;
+}
+
+const string& User::getUsername() const {
+	return username;
 }
