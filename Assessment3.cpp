@@ -47,6 +47,7 @@ public:
 //represents a transaction.
 class Transaction {
 private:
+	string username;
 	TransactionType type; //Income or Expense
 	string date; // format: "DD/MM/YYYY"
 	TransactionCategory category; //Food, Clothes, Transportation,  Entertainment, Communication, Other
@@ -58,9 +59,9 @@ public:
 	Transaction();
 
 	//Constructor.
-	Transaction(TransactionType type, const string &date,
-			TransactionCategory category, const string &description,
-			double amount);
+	Transaction(const string &username, TransactionType type,
+			const string &date, TransactionCategory category,
+			const string &description, double amount);
 
 	//print transaction
 	void print() const;
@@ -70,6 +71,7 @@ public:
 	double getAmount() const;
 	string getCategory() const;
 	const string& getDate() const;
+	const string& getUsername() const;
 	string getDateForCompare() const; //get date in YYYYMMDD format
 	const string& getDescription() const;
 	TransactionType getTypeInt() const;
@@ -360,10 +362,15 @@ Transaction::Transaction() :
 
 }
 
-Transaction::Transaction(TransactionType type, const string &date,
-		TransactionCategory category, const string &description, double amount) :
-		type(type), date(date), category(category), description(description), amount(
-				amount) {
+Transaction::Transaction(const string &username, TransactionType type,
+		const string &date, TransactionCategory category,
+		const string &description, double amount) :
+		username(username), type(type), date(date), category(category), description(
+				description), amount(amount) {
+}
+
+const string& Transaction::getUsername() const {
+	return username;
 }
 
 //print transaction
@@ -479,6 +486,7 @@ TransactionList::TransactionList() {
 }
 
 void TransactionList::loadFile(const string &filename) {
+	string username;
 	int type;
 	string date; // format: "DD/MM/YYYY"
 	int category; //Housing, Transportation, Food
@@ -490,22 +498,28 @@ void TransactionList::loadFile(const string &filename) {
 
 	//check file exists or not.
 	if (ifs.is_open()) {
-		string temp;
-		//read all transactions
-		while (getline(ifs, temp, ',')) {
-			//if we get the date correctly, continue to read other data
+		string line;
+
+		while (getline(ifs, line)) {
+			string temp;
+			istringstream iss(line);
+
+			getline(iss, username, ',');
+			getline(iss, temp, ',');
 			type = atoi(temp.c_str());
-			getline(ifs, date, ',');
-			getline(ifs, temp, ',');
+			getline(iss, date, ',');
+			getline(iss, temp, ',');
 			category = atoi(temp.c_str());
-			getline(ifs, description, ',');
-			getline(ifs, temp);
+			getline(iss, description, ',');
+			getline(iss, temp);
 			amount = atof(temp.c_str());
 
-			//create object and add to array
-			Transaction trans((TransactionType) type, date,
-					(TransactionCategory) category, description, amount);
-			transactions[size++] = trans;
+			if (!iss.fail()) {
+				//create object and add to array
+				Transaction trans(username, (TransactionType) type, date,
+						(TransactionCategory) category, description, amount);
+				transactions[size++] = trans;
+			}
 		}
 		ifs.close();
 
@@ -526,6 +540,7 @@ void TransactionList::saveFile(const string &filename) const {
 	if (ofs.is_open()) {
 		//output all transactions to file
 		for (int i = 0; i < size; i++) {
+			ofs << transactions[i].getUsername() << ",";
 			ofs << transactions[i].getTypeInt() << ",";
 			ofs << transactions[i].getDate() << ",";
 			ofs << transactions[i].getCategoryInt() << ",";
@@ -908,7 +923,7 @@ Transaction App::createTransaction() {
 	amount = atof(temp.c_str());
 
 	//create object
-	Transaction trans((TransactionType) type, date,
+	Transaction trans(currentUser, (TransactionType) type, date,
 			(TransactionCategory) category, description, amount);
 	return trans;
 }
