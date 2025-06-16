@@ -104,7 +104,7 @@ protected:
 	struct Node {
 		DataType data;
 		std::shared_ptr<Node> next;
-		std::shared_ptr<Node> prev;
+		std::weak_ptr<Node> prev;
 	};
 protected:
 	std::shared_ptr<Node> head;
@@ -115,7 +115,7 @@ protected:
 		std::shared_ptr<Node> node = std::make_shared<Node>();
 		node->data = data;
 		node->next = nullptr;
-		node->prev = nullptr;
+		node->prev.reset();
 		return node;
 	}
 public:
@@ -123,6 +123,25 @@ public:
 	LinkedList() :
 			head(nullptr), tail(nullptr), count(0) {
 
+	}
+
+	void clear(){
+		while (head) {
+			// Move head to the next node
+			head = head->next;
+
+			// The nodes will be automatically deleted as their shared_ptr references are removed
+			// The weak_ptr in the next node's prev will automatically expire
+		}
+
+		tail.reset();  // Reset tail pointer
+		count = 0;     // Reset count
+
+		head = nullptr;
+		tail = nullptr;
+	}
+	~LinkedList() {
+		clear();
 	}
 
 	void saveFile(ostream &ofs) const {
@@ -156,7 +175,7 @@ public:
 			index--;
 		}
 
-		return node;
+		return node->data;
 	}
 
 	void set(int index, const DataType &data) {
@@ -189,7 +208,7 @@ public:
 		} else if (node == tail) {
 			removeTail();
 		} else {
-			node->prev->next = node->next;
+			node->prev.lock()->next = node->next;
 			node->next->prev = node->prev;
 			count--;
 		}
@@ -201,7 +220,7 @@ public:
 			if (!head) {
 				tail = nullptr;
 			} else {
-				head->prev = nullptr;
+				head->prev.reset();
 			}
 
 			count--;
@@ -210,7 +229,7 @@ public:
 
 	void removeTail() {
 		if (count > 0) {
-			tail = tail->prev;
+			tail = tail->prev.lock();
 			if (!tail) {
 				head = nullptr;
 			} else {
@@ -280,7 +299,11 @@ public:
 	}
 
 	void print() {
+		int id = 1;
 		while (!empty()) {
+			cout.setf(ios::right);
+			cout << setw(2) << (id++) << ". ";
+			cout.unsetf(ios::right);
 			front().print();
 			popFront();
 		}
@@ -567,6 +590,10 @@ void TransactionList::loadFile(const string &filename) {
 
 	//check file exists or not.
 	if (ifs.is_open()) {
+
+		clear();
+		others.clear();
+
 		string line;
 
 		while (getline(ifs, line)) {
@@ -701,16 +728,12 @@ static string toLower(const string &str) {
 void TransactionList::searchTransaction(const string &keyword, Queue &queue) {
 	string lowercase = toLower(keyword);
 
-	int id = 1;
 	std::shared_ptr<Node> node = head;
 	while (node) {
 		if (node->data.getDate().find(lowercase) != string::npos
 				|| toLower(node->data.getCategory()).find(lowercase)
 						!= string::npos) {
-			cout.setf(ios::right);
-			cout << setw(2) << (id++) << ". ";
-			cout.unsetf(ios::right);
-			node->data.print();
+			queue.push(node->data);
 		}
 		node = node->next;
 	}
@@ -921,7 +944,7 @@ void App::runUserMenu() {
 		cout << endl;
 		cout << "1. add transaction" << endl;
 		cout << "2. modify transaction" << endl;
-		cout << "3. delete transaction" << endl;
+		cout << "3. search transactions" << endl;
 		cout << "4. sort transactions" << endl;
 		cout << "5. display transactions" << endl;
 		cout << "0. exit" << endl;
@@ -936,7 +959,7 @@ void App::runUserMenu() {
 		} else if (option == "2") {
 			modifyTransaction();
 		} else if (option == "3") {
-			deleteTransaction();
+			searchTransaction();
 		} else if (option == "4") {
 			sortTransactions();
 		} else if (option == "5") {
@@ -1187,20 +1210,25 @@ User::User() :
 void User::writeToFile(ofstream &ofs) const {
 	size_t ulen = username.size();
 	size_t plen = passwordEncrypted.size();
+	size_t alen = 1;
 	ofs.write(reinterpret_cast<const char*>(&ulen), sizeof(ulen));
 	ofs.write(username.c_str(), ulen);
 	ofs.write(reinterpret_cast<const char*>(&plen), sizeof(plen));
 	ofs.write(passwordEncrypted.c_str(), plen);
+	ofs.write(reinterpret_cast<const char*>(&alen), sizeof(alen));
+	ofs.write(reinterpret_cast<const char*>(&admin), alen);
 }
 
 void User::readFromFile(ifstream &ifs) {
-	size_t ulen, plen;
+	size_t ulen, plen, alen;
 	ifs.read(reinterpret_cast<char*>(&ulen), sizeof(ulen));
 	username.resize(ulen);
 	ifs.read(&username[0], ulen);
 	ifs.read(reinterpret_cast<char*>(&plen), sizeof(plen));
 	passwordEncrypted.resize(plen);
 	ifs.read(&passwordEncrypted[0], plen);
+	ifs.read(reinterpret_cast<char*>(&alen), sizeof(alen));
+	ifs.read(reinterpret_cast<char*>(&admin), alen);
 }
 
 string User::hash(const string &password) {
