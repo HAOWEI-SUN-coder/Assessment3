@@ -4,9 +4,15 @@
 #include <sstream>
 #include <iomanip>
 #include <exception>
+#include <memory>
+#include <algorithm>
+#include <cctype>
+#include <openssl/sha.h>
+
 using namespace std;
 
-const string FILENAME = "transactions.csv";
+const string TRANS_FILENAME = "transactions.csv";
+const string USER_FILENAME = "users.dat";
 
 enum TransactionType {
 	Income, Expense
@@ -80,6 +86,64 @@ public:
 //The maximum number of transactions
 const int MAX_SIZE = 100;
 
+template<class DataType>
+class LinkedList {
+protected:
+	struct Node {
+		DataType data;
+		std::shared_ptr<Node> next;
+		std::shared_ptr<Node> prev;
+	};
+protected:
+	std::shared_ptr<Node> head;
+	std::shared_ptr<Node> tail;
+	int count;
+protected:
+	std::shared_ptr<Node> createNode(const DataType &data) {
+		std::shared_ptr<Node> node = std::make_shared<Node>();
+		node->data = data;
+		node->next = nullptr;
+		node->prev = nullptr;
+		return node;
+	}
+public:
+
+	LinkedList() :
+			head(nullptr), tail(nullptr), count(0) {
+
+	}
+
+	void addToHead(const DataType &data) {
+		if (count == 0) {
+			head = tail = createNode(data);
+		} else {
+			std::shared_ptr<Node> node = createNode(data);
+			node->next = head;
+			head->prev = node;
+			head = node;
+		}
+
+		count++;
+	}
+
+	void addToTail(const DataType &data) {
+		if (count == 0) {
+			head = tail = createNode(data);
+		} else {
+			std::shared_ptr<Node> node = createNode(data);
+			node->prev = tail;
+			tail->next = node;
+			tail = node;
+		}
+
+		count++;
+	}
+
+	int size() {
+		return count;
+	}
+};
+
 //manage transactions
 class TransactionList {
 private:
@@ -121,17 +185,139 @@ public:
 	void sortTransactions();
 };
 
+//represents a user.
+class User {
+	string username;
+	string passwordEncrypted;
+	bool admin;
+public:
+	User();
+
+	User(const string &username, const string &password, bool admin = false);
+
+	void writeToFile(ofstream &ofs) const {
+		size_t ulen = username.size();
+		size_t plen = passwordEncrypted.size();
+		ofs.write(reinterpret_cast<const char*>(&ulen), sizeof(ulen));
+		ofs.write(username.c_str(), ulen);
+		ofs.write(reinterpret_cast<const char*>(&plen), sizeof(plen));
+		ofs.write(passwordEncrypted.c_str(), plen);
+	}
+
+	void readFromFile(ifstream &ifs) {
+		size_t ulen, plen;
+		ifs.read(reinterpret_cast<char*>(&ulen), sizeof(ulen));
+		username.resize(ulen);
+		ifs.read(&username[0], ulen);
+		ifs.read(reinterpret_cast<char*>(&plen), sizeof(plen));
+		passwordEncrypted.resize(plen);
+		ifs.read(&passwordEncrypted[0], plen);
+	}
+
+	static string hash(const string &password) {
+		unsigned char hash[SHA256_DIGEST_LENGTH];
+		SHA256((unsigned char*) password.c_str(), password.size(), hash);
+		std::stringstream ss;
+		for (unsigned char i : hash) {
+			ss << std::hex << std::setw(2) << std::setfill('0') << (int) i;
+		}
+		return ss.str();
+	}
+
+	bool isAdmin() const;
+	const string& getPassword() const;
+	const string& getUsername() const;
+};
+
+class UserList: public LinkedList<User> {
+
+public:
+	UserList() {
+
+	}
+
+	bool hasUser(const string &username) const {
+		std::shared_ptr<Node> node = head;
+		while (node) {
+			if (node->data.getUsername() == username) {
+				return true;
+			}
+			node = node->next;
+		}
+		return false;
+	}
+
+	bool login(const string &username, const string &password,
+			bool &admin) const {
+		admin = false;
+		string passwordEncrypted = User::hash(password);
+
+		std::shared_ptr<Node> node = head;
+		while (node) {
+			if (node->data.getUsername() == username
+					&& node->data.getPassword() == passwordEncrypted) {
+				admin = node->data.isAdmin();
+				return true;
+			}
+			node = node->next;
+		}
+		return false;
+	}
+
+	void loadFile(const string &filename) {
+		ifstream ifs(filename, ios::binary);
+		if (!ifs) {
+			throw FileException("No users found.");
+		}
+
+		while (ifs.peek() != EOF) {
+			User u;
+			u.readFromFile(ifs);
+			addToTail(u);
+		}
+		ifs.close();
+	}
+
+	void saveFile(const string &filename) {
+		ofstream ofs(filename, ios::binary);
+		if (!ofs) {
+			throw FileException("Failed to open file for writing.");
+			return;
+		}
+
+		std::shared_ptr<Node> node = head;
+		while (head) {
+			head->data.writeToFile(ofs);
+			head = head->next;
+		}
+		ofs.close();
+	}
+};
+
 //show menu and handle user commands.
 class App {
 private:
 	TransactionList transList;
-
+	UserList userList;
+	string currentUser;
 public:
 	//constructor.
 	App();
 
 	//show system menu.
-	void showMenu();
+	void runMenu();
+
+	//sign in
+	void signIn();
+
+	//sign up
+	void signUp();
+
+	//show normal user menu.
+	void runUserMenu();
+
+	//show normal user menu.
+	void runAdminMenu();
 
 	//prompt user to create a transaction.
 	Transaction createTransaction();
@@ -166,7 +352,7 @@ public:
 
 int main() {
 	App app;
-	app.showMenu();
+	app.runMenu();
 }
 
 Transaction::Transaction() :
@@ -467,9 +653,144 @@ App::App() {
 
 }
 
-void App::showMenu() {
+//sign in
+void App::signIn() {
+	string temp;
+	string username, password;
+
+	cout << "Enter username: ";
+	cin >> username;
+	cout << "Enter password: ";
+	cin >> password;
+	getline(cin, temp); //skip '\n'
+
+	bool admin;
+	if (userList.login(username, password, admin)) {
+		currentUser = username;
+		if (admin) {
+			runAdminMenu();
+		} else {
+			runUserMenu();
+		}
+	} else {
+		cout << "Sign in failed." << endl;
+	}
+}
+
+//sign up
+void App::signUp() {
+	string temp;
+	string username, password;
+	bool admin;
+
+	cout << "Enter username: ";
+	cin >> username;
+	cout << "Enter password: ";
+	cin >> password;
+	cout << "Admin?(y/n): ";
+	cin >> temp;
+	std::transform(temp.begin(), temp.end(), temp.begin(), ::tolower); //convert temp to lowercase
+	admin = temp == "y";
+	getline(cin, temp); //skip '\n'
+
+	if (!userList.hasUser(username)) {
+		User u(username, password, admin);
+		userList.addToTail(u);
+	} else {
+		cout << "The username already exists." << endl;
+	}
+}
+
+void App::runMenu() {
 	try {
-		transList.loadFile(FILENAME);
+		userList.loadFile(USER_FILENAME);
+	} catch (const exception &e) {
+		cout << "Exception: " << e.what() << endl;
+	}
+
+	//Repeatedly show the menu until the user exits
+	bool quit = false;
+	while (!quit) {
+		//show the menu
+		cout << endl;
+		cout << "1. Sign in" << endl;
+		cout << "2. Sing up" << endl;
+		cout << "0. exit" << endl;
+
+		//Accept user input
+		string option;
+		getline(cin, option);
+
+		//Implement command handling via functions
+		if (option == "1") {
+			signIn();
+		} else if (option == "2") {
+			signUp();
+		} else if (option == "0") {
+			//user exits
+			quit = true;
+		}
+	}
+
+	try {
+		userList.saveFile(USER_FILENAME);
+	} catch (const exception &e) {
+		cout << "Exception: " << e.what() << endl;
+	}
+}
+
+//show normal user menu.
+void App::runUserMenu() {
+	try {
+		transList.loadFile(TRANS_FILENAME);
+	} catch (const exception &e) {
+		cout << "Exception: " << e.what() << endl;
+	}
+
+	//Repeatedly show the menu until the user exits
+	bool quit = false;
+	while (!quit) {
+		//show the menu
+		cout << endl;
+		cout << "1. add transaction" << endl;
+		cout << "2. modify transaction" << endl;
+		cout << "3. delete transaction" << endl;
+		cout << "4. sort transactions" << endl;
+		cout << "5. display transactions" << endl;
+		cout << "0. exit" << endl;
+
+		//Accept user input
+		string option;
+		getline(cin, option);
+
+		//Implement command handling via functions
+		if (option == "1") {
+			addTransaction();
+		} else if (option == "2") {
+			modifyTransaction();
+		} else if (option == "3") {
+			deleteTransaction();
+		} else if (option == "4") {
+			sortTransactions();
+		} else if (option == "5") {
+			displayTransactions();
+		} else if (option == "0") {
+			//user exits
+			quit = true;
+		}
+	}
+
+	try {
+		transList.saveFile(TRANS_FILENAME);
+	} catch (const exception &e) {
+		cout << "Exception: " << e.what() << endl;
+	}
+}
+
+//show normal user menu.
+void App::runAdminMenu() {
+	try {
+		transList.loadFile(TRANS_FILENAME);
 	} catch (const exception &e) {
 		cout << "Exception: " << e.what() << endl;
 	}
@@ -511,7 +832,7 @@ void App::showMenu() {
 	}
 
 	try {
-		transList.saveFile(FILENAME);
+		transList.saveFile(TRANS_FILENAME);
 	} catch (const exception &e) {
 		cout << "Exception: " << e.what() << endl;
 	}
@@ -687,4 +1008,25 @@ bool App::validateAmount(const string &input) const {
 	} catch (const std::out_of_range &e) {
 		return false; // Out of range for double
 	}
+}
+
+User::User() :
+		admin(false) {
+
+}
+
+User::User(const string &username, const string &password, bool admin) :
+		username(username), passwordEncrypted(hash(password)), admin(admin) {
+}
+
+bool User::isAdmin() const {
+	return admin;
+}
+
+const string& User::getPassword() const {
+	return passwordEncrypted;
+}
+
+const string& User::getUsername() const {
+	return username;
 }
