@@ -570,6 +570,8 @@ void TransactionList::loadFile(const string &filename) {
 		string line;
 
 		while (getline(ifs, line)) {
+			line = decrypt(line);
+
 			string temp;
 			istringstream iss(line);
 
