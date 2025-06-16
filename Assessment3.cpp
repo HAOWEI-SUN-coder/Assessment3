@@ -30,6 +30,19 @@ enum TransactionCategory {
 	Other
 };
 
+string encrypt(const string &data) {
+	string encrypted = data;
+	char key = 'K'; // Simple XOR key
+	for (char &c : encrypted) {
+		c ^= key;
+	}
+	return encrypted;
+}
+
+string decrypt(const string &encrypted) {
+	return encrypt(encrypted); // XOR encryption is symmetric
+}
+
 // file error exception.
 class FileException: public exception {
 	string message;
@@ -85,9 +98,6 @@ public:
 	void setDescription(const string &description);
 };
 
-//The maximum number of transactions
-const int MAX_SIZE = 100;
-
 template<class DataType>
 class LinkedList {
 protected:
@@ -118,12 +128,18 @@ public:
 	void saveFile(ostream &ofs) const {
 		std::shared_ptr<Node> node = head;
 		while (node) {
-			ofs << node->data.getUsername() << ",";
-			ofs << node->data.getTypeInt() << ",";
-			ofs << node->data.getDate() << ",";
-			ofs << node->data.getCategoryInt() << ",";
-			ofs << node->data.getDescription() << ",";
-			ofs << node->data.getAmount() << endl;
+
+			ostringstream oss;
+			oss << node->data.getUsername() << ",";
+			oss << node->data.getTypeInt() << ",";
+			oss << node->data.getDate() << ",";
+			oss << node->data.getCategoryInt() << ",";
+			oss << node->data.getDescription() << ",";
+			oss << node->data.getAmount();
+
+			string line = oss.str();
+			line = encrypt(line);
+			ofs << line << endl;
 
 			node = node->next;
 		}
@@ -599,13 +615,17 @@ void TransactionList::saveFile(const string &filename) const {
 		//output all transactions to file
 		std::shared_ptr<Node> node = head;
 		while (node) {
-			ofs << node->data.getUsername() << ",";
-			ofs << node->data.getTypeInt() << ",";
-			ofs << node->data.getDate() << ",";
-			ofs << node->data.getCategoryInt() << ",";
-			ofs << node->data.getDescription() << ",";
-			ofs << node->data.getAmount() << endl;
+			ostringstream oss;
+			oss << node->data.getUsername() << ",";
+			oss << node->data.getTypeInt() << ",";
+			oss << node->data.getDate() << ",";
+			oss << node->data.getCategoryInt() << ",";
+			oss << node->data.getDescription() << ",";
+			oss << node->data.getAmount();
 
+			string line = oss.str();
+			line = encrypt(line);
+			ofs << line << endl;
 			node = node->next;
 		}
 
