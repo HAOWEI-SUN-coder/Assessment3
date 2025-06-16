@@ -197,34 +197,9 @@ public:
 
 	User(const string &username, const string &password, bool admin = false);
 
-	void writeToFile(ofstream &ofs) const {
-		size_t ulen = username.size();
-		size_t plen = passwordEncrypted.size();
-		ofs.write(reinterpret_cast<const char*>(&ulen), sizeof(ulen));
-		ofs.write(username.c_str(), ulen);
-		ofs.write(reinterpret_cast<const char*>(&plen), sizeof(plen));
-		ofs.write(passwordEncrypted.c_str(), plen);
-	}
-
-	void readFromFile(ifstream &ifs) {
-		size_t ulen, plen;
-		ifs.read(reinterpret_cast<char*>(&ulen), sizeof(ulen));
-		username.resize(ulen);
-		ifs.read(&username[0], ulen);
-		ifs.read(reinterpret_cast<char*>(&plen), sizeof(plen));
-		passwordEncrypted.resize(plen);
-		ifs.read(&passwordEncrypted[0], plen);
-	}
-
-	static string hash(const string &password) {
-		unsigned char hash[SHA256_DIGEST_LENGTH];
-		SHA256((unsigned char*) password.c_str(), password.size(), hash);
-		std::stringstream ss;
-		for (unsigned char i : hash) {
-			ss << std::hex << std::setw(2) << std::setfill('0') << (int) i;
-		}
-		return ss.str();
-	}
+	void writeToFile(ofstream &ofs) const;
+	void readFromFile(ifstream &ifs);
+	static string hash(const string &password);
 
 	bool isAdmin() const;
 	const string& getPassword() const;
@@ -234,66 +209,16 @@ public:
 class UserList: public LinkedList<User> {
 
 public:
-	UserList() {
+	UserList();
 
-	}
-
-	bool hasUser(const string &username) const {
-		std::shared_ptr<Node> node = head;
-		while (node) {
-			if (node->data.getUsername() == username) {
-				return true;
-			}
-			node = node->next;
-		}
-		return false;
-	}
+	bool hasUser(const string &username) const;
 
 	bool login(const string &username, const string &password,
-			bool &admin) const {
-		admin = false;
-		string passwordEncrypted = User::hash(password);
+			bool &admin) const;
 
-		std::shared_ptr<Node> node = head;
-		while (node) {
-			if (node->data.getUsername() == username
-					&& node->data.getPassword() == passwordEncrypted) {
-				admin = node->data.isAdmin();
-				return true;
-			}
-			node = node->next;
-		}
-		return false;
-	}
+	void loadFile(const string &filename);
 
-	void loadFile(const string &filename) {
-		ifstream ifs(filename, ios::binary);
-		if (!ifs) {
-			throw FileException("No users found.");
-		}
-
-		while (ifs.peek() != EOF) {
-			User u;
-			u.readFromFile(ifs);
-			addToTail(u);
-		}
-		ifs.close();
-	}
-
-	void saveFile(const string &filename) {
-		ofstream ofs(filename, ios::binary);
-		if (!ofs) {
-			throw FileException("Failed to open file for writing.");
-			return;
-		}
-
-		std::shared_ptr<Node> node = head;
-		while (head) {
-			head->data.writeToFile(ofs);
-			head = head->next;
-		}
-		ofs.close();
-	}
+	void saveFile(const string &filename);
 };
 
 //show menu and handle user commands.
@@ -664,6 +589,67 @@ void TransactionList::sortTransactions() {
 	}
 }
 
+UserList::UserList() {
+
+}
+
+bool UserList::hasUser(const string &username) const {
+	std::shared_ptr<Node> node = head;
+	while (node) {
+		if (node->data.getUsername() == username) {
+			return true;
+		}
+		node = node->next;
+	}
+	return false;
+}
+
+bool UserList::login(const string &username, const string &password,
+		bool &admin) const {
+	admin = false;
+	string passwordEncrypted = User::hash(password);
+
+	std::shared_ptr<Node> node = head;
+	while (node) {
+		if (node->data.getUsername() == username
+				&& node->data.getPassword() == passwordEncrypted) {
+			admin = node->data.isAdmin();
+			return true;
+		}
+		node = node->next;
+	}
+	return false;
+}
+
+void UserList::loadFile(const string &filename) {
+	ifstream ifs(filename, ios::binary);
+	if (!ifs) {
+		throw FileException("No users found.");
+	}
+
+	while (ifs.peek() != EOF) {
+		User u;
+		u.readFromFile(ifs);
+		addToTail(u);
+	}
+	ifs.close();
+}
+
+void UserList::saveFile(const string &filename) {
+	ofstream ofs(filename, ios::binary);
+	if (!ofs) {
+		throw FileException("Failed to open file for writing.");
+		return;
+	}
+
+	std::shared_ptr<Node> node = head;
+	while (head) {
+		head->data.writeToFile(ofs);
+		head = head->next;
+	}
+	ofs.close();
+}
+
 App::App() {
 
 }
@@ -1028,6 +1014,35 @@ bool App::validateAmount(const string &input) const {
 User::User() :
 		admin(false) {
 
+}
+
+void User::writeToFile(ofstream &ofs) const {
+	size_t ulen = username.size();
+	size_t plen = passwordEncrypted.size();
+	ofs.write(reinterpret_cast<const char*>(&ulen), sizeof(ulen));
+	ofs.write(username.c_str(), ulen);
+	ofs.write(reinterpret_cast<const char*>(&plen), sizeof(plen));
+	ofs.write(passwordEncrypted.c_str(), plen);
+}
+
+void User::readFromFile(ifstream &ifs) {
+	size_t ulen, plen;
+	ifs.read(reinterpret_cast<char*>(&ulen), sizeof(ulen));
+	username.resize(ulen);
+	ifs.read(&username[0], ulen);
+	ifs.read(reinterpret_cast<char*>(&plen), sizeof(plen));
+	passwordEncrypted.resize(plen);
+	ifs.read(&passwordEncrypted[0], plen);
+}
+
+string User::hash(const string &password) {
+	unsigned char hash[SHA256_DIGEST_LENGTH];
+	SHA256((unsigned char*) password.c_str(), password.size(), hash);
+	std::stringstream ss;
+	for (unsigned char i : hash) {
+		ss << std::hex << std::setw(2) << std::setfill('0') << (int) i;
+	}
+	return ss.str();
 }
 
 User::User(const string &username, const string &password, bool admin) :
