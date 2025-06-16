@@ -115,6 +115,96 @@ public:
 
 	}
 
+	void saveFile(ostream &ofs) const {
+		std::shared_ptr<Node> node = head;
+		while (node) {
+			ofs << node->data.getUsername() << ",";
+			ofs << node->data.getTypeInt() << ",";
+			ofs << node->data.getDate() << ",";
+			ofs << node->data.getCategoryInt() << ",";
+			ofs << node->data.getDescription() << ",";
+			ofs << node->data.getAmount() << endl;
+
+			node = node->next;
+		}
+	}
+
+	const Transaction& get(int index) const {
+		if (!(index >= 0 && index < size())) {
+			throw "LinkedList::get: Invalid index";
+		}
+
+		std::shared_ptr<Node> node = head;
+		while (index > 0) {
+			node = node->next;
+			index--;
+		}
+
+		return node;
+	}
+
+	void set(int index, const DataType &data) {
+		if (!(index >= 0 && index < size())) {
+			throw "LinkedList::get: Invalid index";
+		}
+
+		std::shared_ptr<Node> node = head;
+		while (index > 0) {
+			node = node->next;
+			index--;
+		}
+
+		node->data = data;
+	}
+
+	void remove(int index) {
+		if (!(index >= 0 && index < size())) {
+			throw "LinkedList::get: Invalid index";
+		}
+
+		std::shared_ptr<Node> node = head;
+		while (index > 0) {
+			node = node->next;
+			index--;
+		}
+
+		if (node == head) {
+			removeHead();
+		} else if (node == tail) {
+			removeTail();
+		} else {
+			node->prev->next = node->next;
+			node->next->prev = node->prev;
+			count--;
+		}
+	}
+
+	void removeHead() {
+		if (count > 0) {
+			head = head->next;
+			if (!head) {
+				tail = nullptr;
+			} else {
+				head->prev = nullptr;
+			}
+
+			count--;
+		}
+	}
+
+	void removeTail() {
+		if (count > 0) {
+			tail = tail->prev;
+			if (!tail) {
+				head = nullptr;
+			} else {
+				tail->next = nullptr;
+			}
+
+			count--;
+		}
+	}
+
 	void addToHead(const DataType &data) {
 		if (count == 0) {
 			head = tail = createNode(data);
@@ -141,28 +231,62 @@ public:
 		count++;
 	}
 
-	int size() {
+	int size() const {
 		return count;
+	}
+
+	bool empty() const {
+		return size() == 0;
+	}
+};
+
+class Queue: public LinkedList<Transaction> {
+
+public:
+	Queue() {
+
+	}
+
+	void push(const Transaction &trans) {
+		addToTail(trans);
+	}
+
+	Transaction front() const {
+		if (size() > 0) {
+			return head->data;
+		} else {
+			return Transaction();
+		}
+	}
+
+	void popFront() {
+		removeHead();
+	}
+
+	void print() {
+		while (!empty()) {
+			front().print();
+			popFront();
+		}
 	}
 };
 
 //manage transactions
-class TransactionList {
+class TransactionList: public LinkedList<Transaction> {
 private:
-	Transaction transactions[MAX_SIZE];
-	int size; //number of transactions in array.
+	string currentUser;
+	LinkedList<Transaction> others;
 public:
 	//Constructor.
 	TransactionList();
+
+	void setCurrentUser(const string &username);
 
 	//load data from file
 	void loadFile(const string &filename);
 
 	//save data to file
 	void saveFile(const string &filename) const;
-
-	// get number of transactions
-	int count() const;
 
 	// prompt user to select an transaction
 	// return a number in range [0, size)
@@ -178,7 +302,7 @@ public:
 	void deleteTransaction(int index);
 
 	//search transaction (linear search) by category or date.
-	void searchTransaction(const string &keyword);
+	void searchTransaction(const string &keyword, Queue &queue);
 
 	//display all transactions
 	void displayTransactions() const;
@@ -406,8 +530,12 @@ TransactionType Transaction::getTypeInt() const {
 TransactionCategory Transaction::getCategoryInt() const {
 	return category;
 }
+
 TransactionList::TransactionList() {
-	size = 0;
+}
+
+void TransactionList::setCurrentUser(const string &username) {
+	currentUser = username;
 }
 
 void TransactionList::loadFile(const string &filename) {
@@ -443,12 +571,17 @@ void TransactionList::loadFile(const string &filename) {
 				//create object and add to array
 				Transaction trans(username, (TransactionType) type, date,
 						(TransactionCategory) category, description, amount);
-				transactions[size++] = trans;
+
+				if (username == currentUser) {
+					addToTail(trans);
+				} else {
+					others.addToTail(trans);
+				}
 			}
 		}
 		ifs.close();
 
-		cout << "loaded " << size << " transactions from " << filename << "."
+		cout << "loaded " << size() << " transactions from " << filename << "."
 				<< endl;
 	} else {
 		ostringstream oss;
@@ -464,17 +597,22 @@ void TransactionList::saveFile(const string &filename) const {
 
 	if (ofs.is_open()) {
 		//output all transactions to file
-		for (int i = 0; i < size; i++) {
-			ofs << transactions[i].getUsername() << ",";
-			ofs << transactions[i].getTypeInt() << ",";
-			ofs << transactions[i].getDate() << ",";
-			ofs << transactions[i].getCategoryInt() << ",";
-			ofs << transactions[i].getDescription() << ",";
-			ofs << transactions[i].getAmount() << endl;
+		std::shared_ptr<Node> node = head;
+		while (node) {
+			ofs << node->data.getUsername() << ",";
+			ofs << node->data.getTypeInt() << ",";
+			ofs << node->data.getDate() << ",";
+			ofs << node->data.getCategoryInt() << ",";
+			ofs << node->data.getDescription() << ",";
+			ofs << node->data.getAmount() << endl;
+
+			node = node->next;
 		}
+
+		others.saveFile(ofs);
 		ofs.close();
 
-		cout << "saved " << size << " transactions to " << filename << "."
+		cout << "saved " << size() << " transactions to " << filename << "."
 				<< endl;
 	} else {
 
@@ -482,11 +620,6 @@ void TransactionList::saveFile(const string &filename) const {
 		oss << "Failed to create file " << filename << ".";
 		throw FileException(oss.str());
 	}
-}
-
-// get number of transactions
-int TransactionList::count() const {
-	return size;
 }
 
 // prompt user to select an transaction
@@ -499,7 +632,7 @@ int TransactionList::selectTransaction() {
 
 	getline(cin, temp);
 	index = atoi(temp.c_str());
-	while (!(index >= 1 && index <= size)) {
+	while (!(index >= 1 && index <= size())) {
 		cout << "Your selection: ";
 		getline(cin, temp);
 		index = atoi(temp.c_str());
@@ -509,27 +642,24 @@ int TransactionList::selectTransaction() {
 }
 
 void TransactionList::addTransaction(const Transaction &trans) {
-	transactions[size++] = trans;
+	addToTail(trans);
 }
 
 void TransactionList::modifyTransaction(int index, const Transaction &trans) {
-	if (!(index >= 0 && index < size)) {
+	if (!(index >= 0 && index < size())) {
 		throw "Invalid transaction index.";
 	}
 
-	transactions[index] = trans;
+	set(index, trans);
 }
 
 void TransactionList::deleteTransaction(int index) {
-	if (!(index >= 0 && index < size)) {
+	if (!(index >= 0 && index < size())) {
 		throw "Invalid transaction index.";
 	}
 
 	//remove transaction at index
-	for (int i = index; i < size - 1; i++) {
-		transactions[i] = transactions[i + 1];
-	}
-	size--;
+	remove(index);
 }
 
 static string toLower(const string &str) {
@@ -545,47 +675,60 @@ static string toLower(const string &str) {
 
 	return temp;
 }
-void TransactionList::searchTransaction(const string &keyword) {
+
+void TransactionList::searchTransaction(const string &keyword, Queue &queue) {
 	string lowercase = toLower(keyword);
 
 	int id = 1;
-	for (int i = 0; i < size; i++) {
-		if (transactions[i].getDate().find(lowercase) != string::npos
-				|| toLower(transactions[i].getCategory()).find(lowercase)
+	std::shared_ptr<Node> node = head;
+	while (node) {
+		if (node->data.getDate().find(lowercase) != string::npos
+				|| toLower(node->data.getCategory()).find(lowercase)
 						!= string::npos) {
 			cout.setf(ios::right);
 			cout << setw(2) << (id++) << ". ";
 			cout.unsetf(ios::right);
-			transactions[i].print();
+			node->data.print();
 		}
+		node = node->next;
 	}
 }
 
 void TransactionList::displayTransactions() const {
-	for (int i = 0; i < size; i++) {
+	std::shared_ptr<Node> node = head;
+	int i = 0;
+	while (node) {
 		cout.setf(ios::right);
 		cout << setw(2) << (i + 1) << ". ";
 		cout.unsetf(ios::right);
-		transactions[i].print();
+		node->data.print();
+
+		node = node->next;
+		i++;
 	}
 }
 
 void TransactionList::sortTransactions() {
 	//selection sort
-	for (int i = 0; i < size; i++) {
+	std::shared_ptr<Node> node1 = head;
+	while (node1) {
 		//find the max element after i
-		int maxIndex = i;
-		for (int j = i; j < size; j++) {
-			if (transactions[j].getDateForCompare()
-					> transactions[maxIndex].getDateForCompare()) {
-				maxIndex = j;
+		std::shared_ptr<Node> maxIndex = node1;
+		std::shared_ptr<Node> node2 = node1;
+		while (node2) {
+			if (node2->data.getDateForCompare()
+					> maxIndex->data.getDateForCompare()) {
+				maxIndex = node2;
 			}
+			node2 = node2->next;
 		}
 
-		//swap maxIndex and i
-		Transaction temp = transactions[i];
-		transactions[i] = transactions[maxIndex];
-		transactions[maxIndex] = temp;
+		//swap maxIndex and node1
+		Transaction temp = node1->data;
+		node1->data = maxIndex->data;
+		maxIndex->data = temp;
+
+		node1 = node1->next;
 	}
 }
 
@@ -668,6 +811,7 @@ void App::signIn() {
 	bool admin;
 	if (userList.login(username, password, admin)) {
 		currentUser = username;
+		transList.setCurrentUser(currentUser);
 		if (admin) {
 			runAdminMenu();
 		} else {
@@ -921,7 +1065,7 @@ void App::addTransaction() {
 }
 
 void App::modifyTransaction() {
-	if (transList.count() == 0) {
+	if (transList.size() == 0) {
 		cout << "no transactions now." << endl;
 		return;
 	}
@@ -934,7 +1078,7 @@ void App::modifyTransaction() {
 }
 
 void App::deleteTransaction() {
-	if (transList.count() == 0) {
+	if (transList.size() == 0) {
 		cout << "no transactions now." << endl;
 		return;
 	}
@@ -950,7 +1094,9 @@ void App::searchTransaction() {
 	getline(cin, keyword);
 
 	printTableHeader();
-	transList.searchTransaction(keyword);
+	Queue queue;
+	transList.searchTransaction(keyword, queue);
+	queue.print();
 }
 
 void App::displayTransactions() const {
